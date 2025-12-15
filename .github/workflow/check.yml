@@ -1,0 +1,86 @@
+name: CI (ROS 2 in Docker)
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  week09_10_py_pubsub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build course Docker image
+        run: |
+          set -euxo pipefail
+          if [ -f docker/Dockerfile ]; then
+            docker build -t tro029-ci -f docker/Dockerfile docker
+          elif [ -f Dockerfile ]; then
+            docker build -t tro029-ci -f Dockerfile .
+          else
+            echo "ERROR: Dockerfile not found (expected docker/Dockerfile or ./Dockerfile)"
+            exit 1
+          fi
+
+      - name: Run Week 09-10 checks (py_pubsub)
+        run: |
+          set -euxo pipefail
+          docker run --rm             -v "${{ github.workspace }}:/repo"             --entrypoint /bin/bash             --user root             tro029-ci -lc '
+              set -euo pipefail
+              export DEBIAN_FRONTEND=noninteractive
+
+              # Source ROS 2
+              if [ -f /opt/ros/humble/setup.bash ]; then
+                source /opt/ros/humble/setup.bash
+              else
+                source /opt/ros/${ROS_DISTRO:-humble}/setup.bash
+              fi
+
+              # Ensure tooling exists
+              command -v colcon >/dev/null 2>&1 || (apt-get update && apt-get install -y python3-colcon-common-extensions)
+              command -v rosdep >/dev/null 2>&1 || (apt-get update && apt-get install -y python3-rosdep)
+              rosdep init 2>/dev/null || true
+              rosdep update || true
+
+              WS=/tmp/ros2_ws
+              rm -rf "$WS"
+              mkdir -p "$WS/src"
+
+              # Copy student repo (excluding .git) into a staging folder
+              rsync -a --exclude ".git" /repo/ "$WS/src/student_repo/"
+
+              # Locate package directory by package.xml name tag
+              PKG_XML=$(grep -Rsl "<name>py_pubsub</name>" "$WS/src/student_repo" | head -n1 || true)
+              if [ -z "$PKG_XML" ]; then
+                echo "ERROR: could not find package.xml containing <name>py_pubsub</name>"
+                echo "Tip: make sure you committed the py_pubsub package folder (with package.xml) into the repo."
+                exit 1
+              fi
+              PKG_DIR=$(dirname "$PKG_XML")
+              echo "Found py_pubsub at: $PKG_DIR"
+              cp -a "$PKG_DIR" "$WS/src/py_pubsub"
+
+              cd "$WS"
+              rosdep install -i --from-path src --rosdistro humble -y || true
+              colcon build --packages-select py_pubsub
+              source install/setup.bash
+
+              # Smoke test: listener must receive at least one message from talker
+              rm -f /tmp/listener.log /tmp/talker.log
+              timeout 8s ros2 run py_pubsub listener > /tmp/listener.log 2>&1 &
+              LIST_PID=$!
+              sleep 1
+              timeout 4s ros2 run py_pubsub talker > /tmp/talker.log 2>&1 || true
+              sleep 1
+              kill $LIST_PID 2>/dev/null || true
+              wait $LIST_PID 2>/dev/null || true
+
+              echo "--- listener.log (tail) ---"
+              tail -n 50 /tmp/listener.log || true
+
+              grep -Eiq "(I heard:|Kuulsin:|Ma kuulsin:)" /tmp/listener.log
+              echo "OK: pub/sub ran and listener received messages."
+            '
