@@ -1,0 +1,527 @@
+name: Week 09-10 Publisher/Subscriber Check
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate-pubsub:
+    runs-on: ubuntu-latest
+    container:
+      image: osrf/ros:humble-desktop
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup ROS2 Environment
+        run: |
+          echo "Setting up ROS2 Humble environment..."
+          . /opt/ros/humble/setup.bash
+          echo "ROS_DISTRO=$ROS_DISTRO"
+          echo "✅ ROS2 environment ready"
+
+      - name: 📂 Validate Package Structure
+        id: structure_check
+        run: |
+          . /opt/ros/humble/setup.bash
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📂 SAMM 1: Kontrollin py_pubsub paketi struktuuri"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          
+          ERRORS=0
+          SUCCESS=0
+          
+          PKG_NAME="py_pubsub"
+          PKG_PATH="ros2_ws/src/$PKG_NAME"
+          
+          # Kontrolli workspace
+          if [ -d "ros2_ws/src" ]; then
+            echo "✅ Workspace 'ros2_ws/src' olemas"
+            ((SUCCESS++))
+          else
+            echo "❌ VIGA: Workspace 'ros2_ws/src' puudub"
+            ((ERRORS++))
+          fi
+          
+          # Kontrolli paketi kausta
+          if [ -d "$PKG_PATH" ]; then
+            echo "✅ Pakett '$PKG_NAME' olemas"
+            ((SUCCESS++))
+          else
+            echo "❌ VIGA: Pakett '$PKG_NAME' puudub"
+            echo "   📍 Oodatud asukoht: $PKG_PATH"
+            echo "   💡 Loo see: ros2 pkg create --build-type ament_python --license Apache-2.0 $PKG_NAME"
+            ((ERRORS++))
+            echo "STRUCTURE_ERRORS=$ERRORS" >> $GITHUB_ENV
+            exit 1
+          fi
+          
+          # Kontrolli package.xml
+          if [ -f "$PKG_PATH/package.xml" ]; then
+            echo "✅ Fail 'package.xml' olemas"
+            ((SUCCESS++))
+          else
+            echo "❌ VIGA: 'package.xml' puudub"
+            ((ERRORS++))
+          fi
+          
+          # Kontrolli setup.py
+          if [ -f "$PKG_PATH/setup.py" ]; then
+            echo "✅ Fail 'setup.py' olemas"
+            ((SUCCESS++))
+          else
+            echo "❌ VIGA: 'setup.py' puudub"
+            ((ERRORS++))
+          fi
+          
+          # Kontrolli Python paketi kausta
+          if [ -d "$PKG_PATH/$PKG_NAME" ]; then
+            echo "✅ Python paketi kaust olemas: $PKG_NAME/$PKG_NAME/"
+            ((SUCCESS++))
+          else
+            echo "❌ VIGA: Python paketi kaust puudub"
+            ((ERRORS++))
+          fi
+          
+          echo ""
+          echo "STRUCTURE_ERRORS=$ERRORS" >> $GITHUB_ENV
+          echo "STRUCTURE_SUCCESS=$SUCCESS" >> $GITHUB_ENV
+          
+          if [ $ERRORS -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: 📝 Validate Node Files
+        id: node_files_check
+        if: success() || failure()
+        run: |
+          . /opt/ros/humble/setup.bash
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📝 SAMM 2: Kontrollin node failide olemasolu"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          
+          ERRORS=0
+          SUCCESS=0
+          
+          PKG_NAME="py_pubsub"
+          PKG_PATH="ros2_ws/src/$PKG_NAME/$PKG_NAME"
+          
+          # Kontrolli publisher faili
+          PUB_FILE="$PKG_PATH/publisher_member_function.py"
+          if [ -f "$PUB_FILE" ]; then
+            echo "✅ Publisher fail olemas: publisher_member_function.py"
+            ((SUCCESS++))
+            
+            # Kontrolli kas fail sisaldab MinimalPublisher klassi
+            if grep -q "class MinimalPublisher" "$PUB_FILE"; then
+              echo "   ✓ Sisaldab MinimalPublisher klassi"
+              ((SUCCESS++))
+            else
+              echo "   ⚠️ HOIATUS: Ei leia MinimalPublisher klassi"
+            fi
+            
+            # Kontrolli kas on main funktsioon
+            if grep -q "def main" "$PUB_FILE"; then
+              echo "   ✓ Sisaldab main() funktsiooni"
+              ((SUCCESS++))
+            else
+              echo "   ❌ VIGA: Puudub main() funktsioon"
+              ((ERRORS++))
+            fi
+          else
+            echo "❌ VIGA: Publisher fail puudub: publisher_member_function.py"
+            echo "   📍 Oodatud asukoht: $PUB_FILE"
+            echo "   💡 Laadi alla näitefail wget käsuga (vaata README)"
+            ((ERRORS++))
+          fi
+          
+          echo ""
+          
+          # Kontrolli subscriber faili
+          SUB_FILE="$PKG_PATH/subscriber_member_function.py"
+          if [ -f "$SUB_FILE" ]; then
+            echo "✅ Subscriber fail olemas: subscriber_member_function.py"
+            ((SUCCESS++))
+            
+            # Kontrolli kas fail sisaldab MinimalSubscriber klassi
+            if grep -q "class MinimalSubscriber" "$SUB_FILE"; then
+              echo "   ✓ Sisaldab MinimalSubscriber klassi"
+              ((SUCCESS++))
+            else
+              echo "   ⚠️ HOIATUS: Ei leia MinimalSubscriber klassi"
+            fi
+            
+            # Kontrolli kas on main funktsioon
+            if grep -q "def main" "$SUB_FILE"; then
+              echo "   ✓ Sisaldab main() funktsiooni"
+              ((SUCCESS++))
+            else
+              echo "   ❌ VIGA: Puudub main() funktsioon"
+              ((ERRORS++))
+            fi
+          else
+            echo "❌ VIGA: Subscriber fail puudub: subscriber_member_function.py"
+            echo "   📍 Oodatud asukoht: $SUB_FILE"
+            echo "   💡 Laadi alla näitefail wget käsuga (vaata README)"
+            ((ERRORS++))
+          fi
+          
+          echo ""
+          echo "NODE_FILES_ERRORS=$ERRORS" >> $GITHUB_ENV
+          echo "NODE_FILES_SUCCESS=$SUCCESS" >> $GITHUB_ENV
+          
+          if [ $ERRORS -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: 🔍 Validate Dependencies
+        id: dependencies_check
+        if: success() || failure()
+        run: |
+          . /opt/ros/humble/setup.bash
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔍 SAMM 3: Kontrollin sõltuvusi (package.xml)"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          
+          ERRORS=0
+          SUCCESS=0
+          WARNINGS=0
+          
+          PKG_PATH="ros2_ws/src/py_pubsub"
+          PACKAGE_XML="$PKG_PATH/package.xml"
+          
+          if [ ! -f "$PACKAGE_XML" ]; then
+            echo "❌ VIGA: package.xml puudub"
+            ((ERRORS++))
+            echo "DEPENDENCIES_ERRORS=$ERRORS" >> $GITHUB_ENV
+            exit 1
+          fi
+          
+          # Kontrolli rclpy
+          if grep -q "<exec_depend>rclpy</exec_depend>" "$PACKAGE_XML" || \
+             grep -q "<depend>rclpy</depend>" "$PACKAGE_XML"; then
+            echo "✅ Sõltuvus 'rclpy' deklareeritud"
+            ((SUCCESS++))
+          else
+            echo "❌ VIGA: Sõltuvus 'rclpy' puudub"
+            echo "   💡 Lisa: <exec_depend>rclpy</exec_depend>"
+            ((ERRORS++))
+          fi
+          
+          # Kontrolli std_msgs
+          if grep -q "<exec_depend>std_msgs</exec_depend>" "$PACKAGE_XML" || \
+             grep -q "<depend>std_msgs</depend>" "$PACKAGE_XML"; then
+            echo "✅ Sõltuvus 'std_msgs' deklareeritud"
+            ((SUCCESS++))
+          else
+            echo "❌ VIGA: Sõltuvus 'std_msgs' puudub"
+            echo "   💡 Lisa: <exec_depend>std_msgs</exec_depend>"
+            ((ERRORS++))
+          fi
+          
+          # Kontrolli metaandmeid
+          echo ""
+          echo "📋 Kontrollin metaandmeid..."
+          
+          if grep -q "<description>.*TODO.*</description>" "$PACKAGE_XML" || \
+             grep -q "<description></description>" "$PACKAGE_XML"; then
+            echo "⚠️ HOIATUS: Description täitmata või sisaldab 'TODO'"
+            ((WARNINGS++))
+          else
+            echo "✅ Description täidetud"
+            ((SUCCESS++))
+          fi
+          
+          if grep -q 'maintainer email=".*TODO.*"' "$PACKAGE_XML" || \
+             grep -q 'maintainer email="">.*</maintainer>' "$PACKAGE_XML"; then
+            echo "⚠️ HOIATUS: Maintainer email täitmata"
+            ((WARNINGS++))
+          else
+            echo "✅ Maintainer email täidetud"
+            ((SUCCESS++))
+          fi
+          
+          echo ""
+          echo "DEPENDENCIES_ERRORS=$ERRORS" >> $GITHUB_ENV
+          echo "DEPENDENCIES_SUCCESS=$SUCCESS" >> $GITHUB_ENV
+          echo "DEPENDENCIES_WARNINGS=$WARNINGS" >> $GITHUB_ENV
+          
+          if [ $ERRORS -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: 🔧 Validate Entry Points
+        id: entry_points_check
+        if: success() || failure()
+        run: |
+          . /opt/ros/humble/setup.bash
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔧 SAMM 4: Kontrollin entry_points (setup.py)"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          
+          ERRORS=0
+          SUCCESS=0
+          
+          SETUP_PY="ros2_ws/src/py_pubsub/setup.py"
+          
+          if [ ! -f "$SETUP_PY" ]; then
+            echo "❌ VIGA: setup.py puudub"
+            ((ERRORS++))
+            echo "ENTRY_POINTS_ERRORS=$ERRORS" >> $GITHUB_ENV
+            exit 1
+          fi
+          
+          # Kontrolli talker
+          if grep -q "talker.*=.*py_pubsub.publisher_member_function:main" "$SETUP_PY"; then
+            echo "✅ Entry point 'talker' korrektne"
+            ((SUCCESS++))
+          else
+            echo "❌ VIGA: Entry point 'talker' puudub või vale"
+            echo "   💡 Lisa: 'talker = py_pubsub.publisher_member_function:main',"
+            ((ERRORS++))
+          fi
+          
+          # Kontrolli listener
+          if grep -q "listener.*=.*py_pubsub.subscriber_member_function:main" "$SETUP_PY"; then
+            echo "✅ Entry point 'listener' korrektne"
+            ((SUCCESS++))
+          else
+            echo "❌ VIGA: Entry point 'listener' puudub või vale"
+            echo "   💡 Lisa: 'listener = py_pubsub.subscriber_member_function:main',"
+            ((ERRORS++))
+          fi
+          
+          echo ""
+          echo "ENTRY_POINTS_ERRORS=$ERRORS" >> $GITHUB_ENV
+          echo "ENTRY_POINTS_SUCCESS=$SUCCESS" >> $GITHUB_ENV
+          
+          if [ $ERRORS -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: 🔨 Build Package
+        id: build_check
+        if: success() || failure()
+        run: |
+          . /opt/ros/humble/setup.bash
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔨 SAMM 5: Kompileerin py_pubsub paketti"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          
+          cd ros2_ws
+          
+          if colcon build --packages-select py_pubsub 2>&1 | tee build.log; then
+            echo ""
+            echo "✅ Build õnnestus!"
+            echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+          else
+            echo ""
+            echo "❌ Build ebaõnnestus!"
+            echo ""
+            echo "📋 VIIMASED VEAREAD:"
+            tail -n 30 build.log
+            echo ""
+            echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+            exit 1
+          fi
+
+      - name: 🚀 Test Publisher Node
+        id: publisher_test
+        if: env.BUILD_SUCCESS == 'true'
+        run: |
+          . /opt/ros/humble/setup.bash
+          cd ros2_ws
+          . install/setup.bash
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🚀 SAMM 6: Testin Publisher (talker)"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          
+          # Käivita publisher 3 sekundiks
+          timeout 3s ros2 run py_pubsub talker > pub.txt 2>&1 &
+          PUB_PID=$!
+          
+          sleep 1
+          
+          if ps -p $PUB_PID > /dev/null 2>&1; then
+            echo "✅ Publisher käivitus!"
+            
+            sleep 1
+            
+            # Kontrolli topic'ut
+            if ros2 topic list 2>/dev/null | grep -q "/topic"; then
+              echo "✅ Topic '/topic' eksisteerib"
+              
+              TOPIC_TYPE=$(ros2 topic type /topic 2>/dev/null)
+              echo "   Topic type: $TOPIC_TYPE"
+              
+              if echo "$TOPIC_TYPE" | grep -q "std_msgs/msg/String"; then
+                echo "✅ Korrektne message type"
+              fi
+            else
+              echo "❌ VIGA: Topic '/topic' ei leitud"
+              kill $PUB_PID 2>/dev/null || true
+              echo "PUBLISHER_SUCCESS=false" >> $GITHUB_ENV
+              exit 1
+            fi
+            
+            kill $PUB_PID 2>/dev/null || true
+            wait $PUB_PID 2>/dev/null || true
+            
+            echo "PUBLISHER_SUCCESS=true" >> $GITHUB_ENV
+          else
+            echo "❌ Publisher ei käivitunud"
+            cat pub.txt 2>/dev/null || true
+            echo "PUBLISHER_SUCCESS=false" >> $GITHUB_ENV
+            exit 1
+          fi
+
+      - name: 📡 Test Subscriber Node
+        id: subscriber_test
+        if: env.BUILD_SUCCESS == 'true'
+        run: |
+          . /opt/ros/humble/setup.bash
+          cd ros2_ws
+          . install/setup.bash
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📡 SAMM 7: Testin Subscriber (listener)"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          
+          # Käivita subscriber 3 sekundiks
+          timeout 3s ros2 run py_pubsub listener > sub.txt 2>&1 &
+          SUB_PID=$!
+          
+          sleep 1
+          
+          if ps -p $SUB_PID > /dev/null 2>&1; then
+            echo "✅ Subscriber käivitus!"
+            
+            kill $SUB_PID 2>/dev/null || true
+            wait $SUB_PID 2>/dev/null || true
+            
+            echo "SUBSCRIBER_SUCCESS=true" >> $GITHUB_ENV
+          else
+            echo "❌ Subscriber ei käivitunud"
+            cat sub.txt 2>/dev/null || true
+            echo "SUBSCRIBER_SUCCESS=false" >> $GITHUB_ENV
+            exit 1
+          fi
+
+      - name: 🔄 Test Communication
+        id: communication_test
+        if: env.BUILD_SUCCESS == 'true' && env.PUBLISHER_SUCCESS == 'true' && env.SUBSCRIBER_SUCCESS == 'true'
+        run: |
+          . /opt/ros/humble/setup.bash
+          cd ros2_ws
+          . install/setup.bash
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔄 SAMM 8: Testin suhtlust"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          
+          # Käivita mõlemad
+          ros2 run py_pubsub talker > /dev/null 2>&1 &
+          PUB_PID=$!
+          
+          sleep 0.5
+          
+          ros2 run py_pubsub listener > comm_sub.txt 2>&1 &
+          SUB_PID=$!
+          
+          sleep 3
+          
+          kill $PUB_PID $SUB_PID 2>/dev/null || true
+          wait $PUB_PID $SUB_PID 2>/dev/null || true
+          
+          if [ -s "comm_sub.txt" ]; then
+            if grep -qi "I heard" comm_sub.txt || grep -qi "Hello" comm_sub.txt; then
+              echo "✅ Subscriber sai sõnumeid!"
+              echo ""
+              echo "📋 Näidis:"
+              head -n 3 comm_sub.txt
+            else
+              echo "⚠️ Subscriber töötab, aga sõnumeid pole kindel"
+            fi
+            echo "COMMUNICATION_SUCCESS=true" >> $GITHUB_ENV
+          else
+            echo "❌ Suhtlus ebaõnnestus"
+            echo "COMMUNICATION_SUCCESS=false" >> $GITHUB_ENV
+            exit 1
+          fi
+
+      - name: 📊 Final Report
+        if: always()
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📊 KOKKUVÕTE - Week 09-10"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          
+          [ "${STRUCTURE_ERRORS:-0}" -eq 0 ] && echo "✅ Struktuur: OK" || echo "❌ Struktuur: VIGA"
+          [ "${NODE_FILES_ERRORS:-0}" -eq 0 ] && echo "✅ Node failid: OK" || echo "❌ Node failid: VIGA"
+          [ "${DEPENDENCIES_ERRORS:-0}" -eq 0 ] && echo "✅ Sõltuvused: OK" || echo "❌ Sõltuvused: VIGA"
+          [ "${ENTRY_POINTS_ERRORS:-0}" -eq 0 ] && echo "✅ Entry points: OK" || echo "❌ Entry points: VIGA"
+          [ "${BUILD_SUCCESS:-false}" == "true" ] && echo "✅ Build: OK" || echo "❌ Build: FAIL"
+          [ "${PUBLISHER_SUCCESS:-false}" == "true" ] && echo "✅ Publisher: OK" || echo "❌ Publisher: FAIL"
+          [ "${SUBSCRIBER_SUCCESS:-false}" == "true" ] && echo "✅ Subscriber: OK" || echo "❌ Subscriber: FAIL"
+          [ "${COMMUNICATION_SUCCESS:-false}" == "true" ] && echo "✅ Suhtlus: OK" || echo "⚠️ Suhtlus: ?"
+          
+          echo ""
+          
+          TOTAL_ERRORS=$((${STRUCTURE_ERRORS:-0} + ${NODE_FILES_ERRORS:-0} + ${DEPENDENCIES_ERRORS:-0} + ${ENTRY_POINTS_ERRORS:-0}))
+          
+          if [ "$TOTAL_ERRORS" -eq 0 ] && \
+             [ "${BUILD_SUCCESS:-false}" == "true" ] && \
+             [ "${PUBLISHER_SUCCESS:-false}" == "true" ] && \
+             [ "${SUBSCRIBER_SUCCESS:-false}" == "true" ]; then
+            echo "🎉 PALJU ÕNNE! Kõik testid läbitud!"
+            echo ""
+            echo "📚 Järgmine: Week 11-12 (Services)"
+          else
+            echo "❌ ÜLESANNE VAJAB PARANDAMIST"
+            echo ""
+            echo "Vaata ülalpool punaseid vigu ja paranda need"
+          fi
+
+      - name: 📝 GitHub Summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## 📊 Week 09-10: Publisher/Subscriber
+          
+          | Samm | Tulemus |
+          |------|---------|
+          | 📂 Struktuur | ${{ env.STRUCTURE_ERRORS == '0' && '✅' || '❌' }} |
+          | 📝 Node failid | ${{ env.NODE_FILES_ERRORS == '0' && '✅' || '❌' }} |
+          | 🔍 Sõltuvused | ${{ env.DEPENDENCIES_ERRORS == '0' && '✅' || '❌' }} |
+          | 🔧 Entry points | ${{ env.ENTRY_POINTS_ERRORS == '0' && '✅' || '❌' }} |
+          | 🔨 Build | ${{ env.BUILD_SUCCESS == 'true' && '✅' || '❌' }} |
+          | 🚀 Publisher | ${{ env.PUBLISHER_SUCCESS == 'true' && '✅' || '❌' }} |
+          | 📡 Subscriber | ${{ env.SUBSCRIBER_SUCCESS == 'true' && '✅' || '❌' }} |
+          | 🔄 Suhtlus | ${{ env.COMMUNICATION_SUCCESS == 'true' && '✅' || '⚠️' }} |
+          
+          ### Kui test ebaõnnestus:
+          1. Vaata detailset logi ülalpool
+          2. Paranda vead
+          3. Push uuesti
+          EOF
